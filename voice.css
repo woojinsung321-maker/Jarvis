@@ -1,0 +1,89 @@
+/* Phase 4: voice controls. Uses the colors from theme.css. No inline styles (the page's CSP forbids them). */
+
+/* Status line + speak/replay/stop/settings buttons, between the messages and the composer */
+.voice-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 14px 0;
+  min-width: 0;
+}
+.voice-status {
+  flex: 1; min-width: 0; margin: 0;
+  display: flex; align-items: center; gap: 8px;
+  font: 500 0.7rem/1.35 var(--mono); letter-spacing: 0.04em; color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.voice-status[data-state="error"] { color: #ffd3d9; }
+.voice-status[data-state="listening"], .voice-status[data-state="speaking"] { color: var(--blue); }
+.voice-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.voice-actions .icon-btn:disabled { opacity: 0.35; cursor: default; }
+.voice-actions .icon-btn[aria-pressed="true"] { background: var(--blue); color: #021018; box-shadow: var(--glow); }
+.voice-actions .icon-btn.unavailable { opacity: 0.5; }
+.voice-actions .icon-btn:not([aria-pressed="true"]) .wave { opacity: 0.35; }
+
+/* Equalizer: shown only while listening or speaking. It shows state, not loudness. */
+.eq { display: none; align-items: flex-end; gap: 2px; height: 14px; flex-shrink: 0; }
+.eq i { width: 3px; height: 4px; border-radius: 2px; background: currentColor; }
+.voice-status[data-state="listening"] .eq, .voice-status[data-state="speaking"] .eq { display: inline-flex; }
+.voice-status[data-state="listening"] .eq i, .voice-status[data-state="speaking"] .eq i { animation: eq 0.9s ease-in-out infinite; }
+.eq i:nth-child(2) { animation-delay: 0.15s; }
+.eq i:nth-child(3) { animation-delay: 0.3s; }
+.eq i:nth-child(4) { animation-delay: 0.45s; }
+@keyframes eq { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+
+/* Large microphone button */
+.mic {
+  position: relative; width: 56px; height: 56px; flex-shrink: 0;
+  display: grid; place-items: center; padding: 0;
+  background: rgba(46, 200, 255, 0.1);
+  border: 2px solid var(--line-strong); border-radius: 50%;
+  color: var(--blue); cursor: pointer;
+}
+.mic:active { background: rgba(46, 200, 255, 0.25); }
+.mic:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.mic.starting { border-style: dashed; }
+.mic.unavailable { opacity: 0.45; border-color: var(--line); }
+.mic.recording {
+  color: #fff; background: var(--danger); border-color: var(--danger);
+  box-shadow: 0 0 0 0 rgba(255, 93, 115, 0.6);
+  animation: mic-pulse 1.4s ease-out infinite;
+}
+@keyframes mic-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 93, 115, 0.55); }
+  100% { box-shadow: 0 0 0 16px rgba(255, 93, 115, 0); }
+}
+.composer textarea.dictating { border-color: var(--danger); }
+.composer { padding-top: 8px; }
+.toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
+
+/* Voice settings sheet */
+.voice-sheet .sheet-inner { overflow-y: auto; overscroll-behavior: contain; }
+.vs-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.vs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; cursor: pointer; }
+.vs-label { display: flex; flex-direction: column; gap: 2px; font-weight: 600; }
+.vs-sub { font-weight: 400; font-size: 0.84rem; color: var(--muted); }
+.vs-switch {
+  appearance: none; flex-shrink: 0; position: relative; width: 56px; height: 32px; margin: 0;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 999px; cursor: pointer;
+}
+.vs-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--muted); transition: transform 0.15s; }
+.vs-switch:checked { background: rgba(46, 200, 255, 0.25); }
+.vs-switch:checked::after { transform: translateX(24px); background: var(--blue); box-shadow: var(--glow); }
+.vs-switch:disabled { opacity: 0.45; }
+.vs-switch:focus-visible, .vs-range:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.vs-value { margin-left: 6px; color: var(--blue); }
+.vs-range { width: 100%; height: 44px; margin: 0; accent-color: var(--blue); }
+.vs-h { margin: 0; font: 700 0.66rem/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--blue); }
+.vs-note { margin: 0; font-size: 0.88rem; color: var(--muted); overflow-wrap: anywhere; }
+.vs-note strong { color: var(--text); font-weight: 600; }
+.voice-sheet select.field { min-height: 46px; padding: 0 14px; max-width: 100%; }
+
+@media (max-width: 380px) {
+  .voice-bar { padding: 6px 10px 0; }
+  .voice-actions { gap: 4px; }
+  .composer { gap: 8px; padding-left: 10px; padding-right: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mic.recording, .eq i { animation: none !important; }
+  .eq i { height: 10px !important; }
+  .vs-switch::after { transition: none; }
+}

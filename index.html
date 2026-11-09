@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/login.css">
   <link rel="stylesheet" href="/panels.css">
+  <link rel="stylesheet" href="/voice.css">
 </head>
 <body>
   <main id="login" class="login" hidden>
@@ -56,7 +57,31 @@
 
     <main id="messages" class="messages" role="log" aria-live="polite" aria-label="Conversation"></main>
 
+    <div id="voice-bar" class="voice-bar">
+      <p id="voice-status" class="voice-status" role="status" aria-live="polite" data-state="idle">
+        <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span id="voice-status-text">Tap the mic to talk</span>
+      </p>
+      <div class="voice-actions">
+        <button type="button" id="voice-toggle" class="icon-btn" aria-pressed="false" aria-label="Spoken replies off. Tap to turn on">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path class="wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" id="voice-replay" class="icon-btn" aria-label="Replay last reply" disabled>
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 12a7 7 0 1 0 2.2-5.1M5 4v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" id="voice-stop" class="icon-btn" aria-label="Stop speaking" disabled>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+        </button>
+        <button type="button" id="open-voice" class="icon-btn" aria-label="Voice settings" aria-controls="voice-panel">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+      </div>
+    </div>
+
     <form id="composer" class="composer" autocomplete="off">
+      <button type="button" id="mic" class="mic" aria-pressed="false" aria-label="Start voice input">
+        <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
       <label class="sr-only" for="input">Message</label>
       <textarea id="input" rows="1" maxlength="4000" placeholder="Ask JARVIS…" enterkeyhint="send"></textarea>
       <button type="submit" id="send" class="send" aria-label="Send message">
@@ -127,6 +152,46 @@
       </div>
     </form>
   </div>
+
+  <!-- Voice settings -->
+  <section id="voice-panel" class="sheet voice-sheet" hidden aria-label="Voice settings">
+    <div class="sheet-inner">
+      <div class="panel-head">
+        <h2 class="panel-title">Voice</h2>
+        <button type="button" id="close-voice" class="icon-btn" aria-label="Close voice settings">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="vs-card">
+        <label class="vs-row" for="vs-enabled">
+          <span class="vs-label">Spoken replies<span class="vs-sub">JARVIS reads each answer aloud</span></span>
+          <input id="vs-enabled" class="vs-switch" type="checkbox" role="switch">
+        </label>
+      </div>
+
+      <div class="vs-card">
+        <label class="form-label" for="vs-rate">Speech speed <span id="vs-rate-value" class="vs-value">1.0×</span></label>
+        <input id="vs-rate" class="vs-range" type="range" min="0.5" max="2" step="0.1" value="1">
+        <label class="form-label" for="vs-voice">Voice</label>
+        <select id="vs-voice" class="field"></select>
+        <p id="vs-voice-hint" class="vs-note" hidden></p>
+        <button type="button" id="vs-test" class="btn wide">Test voice</button>
+      </div>
+
+      <div class="vs-card">
+        <h3 class="vs-h">Status</h3>
+        <p class="vs-note"><strong>Voice input:</strong> <span id="vs-input-status"></span></p>
+        <p class="vs-note"><strong>Spoken replies:</strong> <span id="vs-output-status"></span></p>
+      </div>
+
+      <div class="vs-card">
+        <h3 class="vs-h">Privacy</h3>
+        <p class="vs-note">The microphone is only used after you tap the mic button, and stops when you tap it again, send, lock, or leave the app. JARVIS does not record, save or upload audio.</p>
+        <p class="vs-note">Speech-to-text is done by your browser, not by JARVIS. In Chrome on Android the browser sends the audio to Google's speech service to transcribe it. If that is not acceptable, type instead.</p>
+      </div>
+    </div>
+  </section>
 
   <!-- Generic confirm / text prompt -->
   <div id="dialog" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dialog-title">

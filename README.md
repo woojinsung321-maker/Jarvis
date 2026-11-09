@@ -1,8 +1,65 @@
-# JARVIS - Phase 3: Persistent memory and conversation history
+# JARVIS - Phase 4: Voice (on top of Phase 3 memory and history)
 
 Phase 1 (the app) + Phase 2 (owner login, Gemini) + **Phase 3: every conversation is saved, and JARVIS keeps
 long-term memories that carry over between chats.** Everything stays on the free tier (Cloudflare Pages + D1 + Gemini free).
 **No secret is stored in any file of this project.**
+
+## What is new in Phase 4: voice
+
+Phase 4 adds voice **on top of** Phase 1-3. Backend, login, Gemini, D1, history and memory are unchanged (`_worker.js` and `backend.js` were not touched).
+
+- **Push-to-talk (big mic button, bottom left).** Tap to start, tap again to stop. The words appear in the message box so you can edit them. **Nothing is sent automatically.**
+  The status line under the chat says what is really happening: *Starting microphone...* until the browser confirms audio capture, then *Listening...*. A red pulsing mic and moving bars show it.
+- **Spoken replies.** Turn on the speaker button (or Voice settings > Spoken replies). Each Gemini answer is then read aloud. Errors, notes and the welcome line are never spoken.
+  **Stop** (square button) silences it at once, **Replay** (circle arrow) reads the last answer again (also works when spoken replies are off, and for the last answer of a reopened chat).
+- **Voice settings** (sliders button): spoken replies on/off, speed 0.5x-2x, system voice, **Test voice**, support status for your browser, privacy note. Saved on the phone in `localStorage` (key `jarvis.voice.v1`; only on/off, speed and voice name - never audio or text).
+- Speech never talks over you: tapping the mic silences JARVIS first, and a reply that arrives while you are recording is not spoken.
+- The microphone is released when you tap the mic again, press Send, type in the box, open Voice settings, lock, start a new chat, or switch away from the app.
+- Markdown in answers (`**`, `#`, bullets, links, code blocks) is cleaned before speaking, and long answers are spoken sentence by sentence (Chrome cuts off long single utterances).
+- No always-listening wake word (browsers do not allow it reliably). `createRecognizer({ mode })` in `voice.js` only accepts `"push-to-talk"` today; a future wake-word recogniser can plug in behind the same start/stop/abort interface.
+
+### Privacy: read this
+- JARVIS never records, stores or uploads audio, has no code that opens the microphone itself, and sends **no** audio to its own backend or Gemini. Only the recognised **text** you choose to send goes to Gemini, as before.
+- **But:** speech-to-text is done by the *browser*. In **Chrome on Android the browser sends the audio to Google's speech service** to transcribe it. JARVIS cannot prevent that. If this is not acceptable, do not use the mic; typing works the same. (The Voice screen says this too.)
+- The microphone permission prompt appears only after you tap the mic button, never at page load. If you press "Block", JARVIS explains how to allow it again.
+- `_headers` already allowed `microphone=(self)` and keeps the strict CSP (`script-src 'self'`, `connect-src 'self'`). Nothing was loosened.
+
+### Deploy Phase 4 (about 3 minutes, no new secrets, no database change)
+1. Extract `jarvis-phase-4.zip`. The site is the `jarvis` folder; `tests` is not part of the site.
+2. In your GitHub repo: **Add file > Upload files**, select **all files inside `jarvis`** (not the `migrations` folder - the database does not change). Same-named files are replaced. **3 files are new:** `voice.js`, `voice-ui.js`, `voice.css`. **4 changed:** `index.html`, `app.js`, `sw.js`, `README.md`.
+3. Commit ("Phase 4 voice"). Cloudflare Pages redeploys by itself. The D1 binding and secrets stay as they are.
+4. Open the app, reload once. The service-worker cache is now `jarvis-shell-v4`. If you still see the old screen without the mic, close the app completely and reopen it (or clear site data for your `pages.dev` address).
+5. Use Chrome on Android. Open the site over `https://` (Pages does this).
+
+### Check Phase 4 on your phone (5 minutes - **these checks have not been done on a real phone yet**)
+1. The mic button and the small voice bar appear; no sideways scrolling; buttons are easy to hit.
+2. Tap the mic: Chrome asks for the microphone. Allow. Status turns to *Listening...* Say a sentence, tap the mic again: your words are in the box. Fix a word by typing. Tap Send: Gemini answers.
+3. Voice settings > turn on Spoken replies > **Test voice**. Pick another voice, change the speed, test again.
+4. Send a question: the answer is spoken. Tap **Stop** mid-sentence: silence at once. Tap **Replay**: it speaks again.
+5. Close the app fully, reopen: spoken replies, speed and voice are still set.
+6. Deny the microphone (Chrome site settings > Microphone > Block), tap the mic: a clear message appears, typing still works.
+7. While recording, press the home button: the microphone indicator in the Android status bar must go away.
+8. Ask "Remember that I like jazz" by voice, send it, check the Memory screen and History still work.
+
+### Phase 4 limits
+- **Dictation ends by itself after a pause** (non-continuous mode, chosen because continuous mode duplicates text on several Android builds). Tap the mic again to add more; new words are appended to what is already in the box.
+- Recognition language follows the phone's browser language. There is no language picker yet.
+- Voice input works only where the browser has SpeechRecognition (Chrome/Edge/Samsung Internet on Android; desktop Chrome and Edge; Safari partly). **Firefox has none** - the mic is shown greyed out and tapping it explains why. Spoken replies need SpeechSynthesis, which almost every browser has.
+- Available voices depend on the phone's text-to-speech engine. If it lists none, the default voice is used.
+- A browser may block *automatic* speech after a long wait (autoplay rules, strictest on iPhone/Safari). JARVIS then says so; **Replay** always works because it follows your tap. iPhone/Safari was not considered a target and is untested.
+- The moving bars while listening show the *state*, not loudness (a real level meter would need a second microphone capture, which Phase 4 deliberately avoids).
+- Voice settings are per browser/phone and are not synced between devices.
+
+### Phase 4 tests
+Run from the project root (Node 22+; the browser tests expect Playwright at `/opt/npm-tools`, like Phase 3's):
+- `node --no-warnings tests/run.mjs` - Phase 1-3 Worker/API checks
+- `node --no-warnings tests/e2e.mjs` - Phase 1-3 phone-Chromium checks (the cache-name check was updated v3 -> v4)
+- `node --no-warnings tests/voice-unit.mjs` - **new**: voice logic with fake engines, plus static safety checks
+- `node --no-warnings tests/voice-e2e.mjs` - **new**: phone-sized Chromium, scripted fake SpeechRecognition/SpeechSynthesis, real frontend + Worker
+
+**Honest scope of these tests:** headless Chromium has no microphone, no speech service and no voices, so the browser tests use scripted fakes. They prove JARVIS's own behaviour (states, text handling, settings, shutting the mic, unsupported browsers, no regressions). They do **not** prove real Android recognition, real voices or real audio output.
+
+---
 
 ## What is new in Phase 3
 
@@ -160,14 +217,15 @@ Limits: message 8,000 characters, memory 500, title 80, request body 64 KB, 2,00
 | `app.js` | Wires the screens to the backend |
 | `backend.js` | The only file that talks to the backend (now also history + memory calls) |
 | `history-ui.js`, `memory-ui.js`, `dialogs.js`, `panels.css` | **New:** history drawer, memory manager, confirm/rename dialogs and toasts, their styling |
-| `chat-ui.js`, `index.html`, `sw.js` | Changed: memory note cards, new screens, cache v3 |
+| `chat-ui.js`, `index.html`, `sw.js` | Changed: memory note cards, new screens (Phase 4: voice bar, mic, voice sheet; cache v4) |
+| `voice.js`, `voice-ui.js`, `voice.css` | **New in Phase 4:** voice engine (settings, detection, recognition, speech), its screen wiring, its styling |
 | `auth.js`, `login.css`, `config.js`, `pwa.js`, `styles.css`, `theme.css`, `manifest.json`, `_headers`, `_routes.json`, icons | Unchanged from Phase 2 |
 
 Phase 1 local demo mode still exists: set `USE_BACKEND: false` in `config.js` (history and memory are hidden in that mode).
 
 ## Tests (in the `tests` folder of the zip, not part of the site)
 
-Last run before packaging: **122 of 122 Worker/API checks and 71 of 71 phone-sized Chromium checks passed.**
+Phase 3 result (Phase 4 results are above and in the delivery notes): **122 of 122 Worker/API checks and 71 of 71 phone-sized Chromium checks passed.**
 
 - `node --no-warnings tests/run.mjs` (Node 22+): runs the real `_worker.js` against a SQLite stand-in for D1 and a fake Gemini.
 - `node --no-warnings tests/e2e.mjs`: drives the real frontend files in phone-sized Chromium against the same Worker. It expects Playwright at `/opt/npm-tools` (the sandbox used to build this), so it will need a path change elsewhere.

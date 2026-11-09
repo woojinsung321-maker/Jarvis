@@ -7,6 +7,7 @@ import { createAuthUI } from "./auth.js";
 import { createDialogs } from "./dialogs.js";
 import { createHistoryUI } from "./history-ui.js";
 import { createMemoryUI, categoryLabel } from "./memory-ui.js";
+import { createVoiceUI } from "./voice-ui.js";
 import { registerServiceWorker, setupInstallButton } from "./pwa.js";
 
 const { getMode, getSession, login, logout, sendMessage } = api;
@@ -21,6 +22,20 @@ const views = { login: $("login"), app: $("app") };
 const dialogs = createDialogs({
   dialog: $("dialog"), title: $("dialog-title"), message: $("dialog-message"), input: $("dialog-input"),
   error: $("dialog-error"), cancel: $("dialog-cancel"), ok: $("dialog-ok"), toast: $("toast"),
+});
+
+// Phase 4: voice. Builds the mic, speak/stop/replay controls and the voice settings screen. Never blocks text chat.
+const voice = createVoiceUI({
+  els: {
+    mic: $("mic"), status: $("voice-status"), statusText: $("voice-status-text"), toggle: $("voice-toggle"),
+    replay: $("voice-replay"), stop: $("voice-stop"), openButton: $("open-voice"), closeButton: $("close-voice"),
+    panel: $("voice-panel"), enabled: $("vs-enabled"), rate: $("vs-rate"), rateValue: $("vs-rate-value"),
+    voiceSelect: $("vs-voice"), voiceHint: $("vs-voice-hint"), test: $("vs-test"),
+    inputStatus: $("vs-input-status"), outputStatus: $("vs-output-status"), composerInput: input,
+  },
+  getInput: () => input.value,
+  setInput: (text) => ui.setInput(text),
+  toast: (text, options) => dialogs.toast(text, options),
 });
 
 // storage: true = server has the D1 database (history + memory on); false = off; null = not known yet.
@@ -78,6 +93,7 @@ function setStatus(text) {
 
 // ------------------------------------------------------------- panels
 function closePanels() {
+  voice.reset();
   historyUI.close();
   memoryUI.reset();
   dialogs.cancelAll();
@@ -93,6 +109,7 @@ function showView(name) {
 }
 
 function sessionEnded() {
+  voice.reset();
   state.conversationId = null;
   legacyHistory = [];
   ui.clear();
@@ -162,12 +179,16 @@ async function refreshHistory() {
 async function openConversation(id) {
   if (state.busy) { dialogs.toast("Wait for the current reply to finish."); return; }
   historyUI.close();
+  voice.stopListening();
+  voice.stopSpeaking();
   const loadingEl = ui.addMessage("assistant", "Loading conversation…", "pending");
   try {
     const data = await api.getConversation(id);
     ui.clear();
     state.conversationId = id;
     for (const m of data.messages ?? []) ui.addMessage(m.role, m.content);
+    // Replay can read the last answer of an opened conversation (it is never spoken automatically).
+    voice.setLastReply([...(data.messages ?? [])].reverse().find((m) => m.role === "assistant")?.content ?? "");
     if (!data.messages?.length) ui.addMessage("assistant", "This conversation is empty. Say something to continue it.");
     historyUI.setActive(id);
     ui.scrollToEnd();
@@ -373,9 +394,11 @@ function showMemoryFeedback(result) {
 }
 
 async function handleSend() {
+  voice.stopListening(); // release the microphone first; late speech results are ignored
   const text = input.value.trim();
   if (!text || state.busy) return;
 
+  voice.stopSpeaking();
   state.busy = true;
   ui.setBusy(true);
   const userEl = ui.addMessage("user", text);
@@ -386,6 +409,8 @@ async function handleSend() {
     const result = await deliver(text);
     pendingEl.remove();
     ui.addMessage("assistant", result.reply);
+    voice.setLastReply(result.reply);
+    voice.speakReply(result.reply); // only real Gemini replies reach this line; errors and notes are never spoken
     if (result.stored) {
       if (result.conversationId) state.conversationId = result.conversationId;
       if (!result.saved) {
@@ -414,6 +439,7 @@ async function handleSend() {
 
 function newChat() {
   if (state.busy) { dialogs.toast("Wait for the current reply to finish."); return; }
+  voice.reset();
   state.conversationId = null;
   legacyHistory = [];
   ui.clear();
@@ -427,6 +453,7 @@ async function handleLock() {
   } catch {
     /* even if the server is unreachable, lock the screen locally */
   }
+  voice.reset();
   state.conversationId = null;
   state.storage = null;
   state.warnedOff = false;
@@ -503,7 +530,8 @@ input.addEventListener("keydown", (event) => {
 // Escape closes the top-most panel (dialogs handle their own Escape).
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" || dialogs.isOpen()) return;
-  if (memoryUI.editorOpen()) memoryUI.closeEditor();
+  if (voice.isSheetOpen()) voice.closeSheet();
+  else if (memoryUI.editorOpen()) memoryUI.closeEditor();
   else if (memoryUI.isOpen()) memoryUI.close();
   else if (historyUI.isOpen()) historyUI.close();
 });
