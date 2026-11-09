@@ -98,3 +98,4 @@ expired cookies, validation, rate limits, model fallback, error handling, no sec
 phone-sized Chrome checks (login flow, chat, lock, offline start, caching, install checks).
 **Not yet tested:** your real Cloudflare deployment, the real Gemini API with your key, and the real phone.
 The checklist above is how you confirm those.
+JARVIS Phase 2 deployment update
