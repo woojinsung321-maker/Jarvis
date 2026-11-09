@@ -15,6 +15,63 @@ export function createChatUI({ messages, input, send }) {
     return el;
   }
 
+  // A small status card under the replies (memory feedback). textContent only.
+  // actions: [{ label, run }]. While one runs, all of that note's buttons are disabled.
+  function addNote({ kind = "info", label, text = "", actions = [], details = null }) {
+    const el = document.createElement("div");
+    el.className = `note ${kind}`.trim();
+    const labelEl = document.createElement("span");
+    labelEl.className = "note-label";
+    const textEl = document.createElement("span");
+    textEl.className = "note-text";
+    el.append(labelEl, textEl);
+
+    if (details) {
+      const box = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = details.summary;
+      const ul = document.createElement("ul");
+      for (const line of details.items) {
+        const li = document.createElement("li");
+        li.textContent = line;
+        ul.appendChild(li);
+      }
+      box.append(summary, ul);
+      el.appendChild(box);
+    }
+
+    const bar = document.createElement("div");
+    bar.className = "note-actions";
+    const buttons = actions.map(({ label: name, run }) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn small";
+      b.textContent = name;
+      b.addEventListener("click", async () => {
+        buttons.forEach((x) => { x.disabled = true; });
+        try { await run(handle); } finally { buttons.forEach((x) => { x.disabled = false; }); }
+      });
+      bar.appendChild(b);
+      return b;
+    });
+    if (buttons.length) el.appendChild(bar);
+
+    const handle = {
+      el,
+      update({ kind: k, label: l, text: t }) {
+        if (k !== undefined) el.className = `note ${k}`.trim();
+        if (l !== undefined) labelEl.textContent = l;
+        if (t !== undefined) textEl.textContent = t;
+      },
+      clearActions() { bar.remove(); },
+      remove() { el.remove(); },
+    };
+    handle.update({ label, text });
+    messages.appendChild(el);
+    scrollToEnd();
+    return handle;
+  }
+
   function clear() {
     messages.replaceChildren();
   }
@@ -34,5 +91,5 @@ export function createChatUI({ messages, input, send }) {
     autosize();
   }
 
-  return { addMessage, clear, setBusy, autosize, setInput, scrollToEnd };
+  return { addMessage, addNote, clear, setBusy, autosize, setInput, scrollToEnd };
 }

@@ -4,7 +4,7 @@
 // - Never touches /api/ requests: login, chat data and cookies are never cached.
 // If you add or rename files in SHELL, change the CACHE version number.
 
-const CACHE = "jarvis-shell-v2";
+const CACHE = "jarvis-shell-v3";
 const SHELL = [
   "/",
   "/theme.css",
@@ -15,6 +15,10 @@ const SHELL = [
   "/config.js",
   "/backend.js",
   "/chat-ui.js",
+  "/dialogs.js",
+  "/history-ui.js",
+  "/memory-ui.js",
+  "/panels.css",
   "/pwa.js",
   "/manifest.json",
   "/icon-192.png",
