@@ -1,0 +1,172 @@
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  color: var(--text);
+  font: 16px/1.5 var(--font);
+  -webkit-tap-highlight-color: transparent;
+  background-color: var(--bg-0);
+  background-image:
+    radial-gradient(120% 60% at 50% -10%, rgba(10, 132, 255, 0.28), transparent 60%),
+    linear-gradient(rgba(46, 200, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(46, 200, 255, 0.045) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+  background-attachment: fixed;
+}
+
+[hidden] { display: none !important; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+button, textarea { font: inherit; color: inherit; }
+
+/* Layout: header / scrolling messages / composer. Fills the visible screen. */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  max-width: 760px;
+  margin: 0 auto;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Header */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(7, 16, 34, 0.92), rgba(7, 16, 34, 0.55));
+  backdrop-filter: blur(8px);
+}
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand-text h1 {
+  margin: 0;
+  font: 700 1.05rem/1.1 var(--mono);
+  letter-spacing: 0.28em;
+  color: var(--blue);
+  text-shadow: 0 0 12px rgba(46, 200, 255, 0.55);
+}
+.status {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;
+  font: 500 0.62rem/1 var(--mono); letter-spacing: 0.16em; color: var(--muted);
+}
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--blue); box-shadow: 0 0 8px var(--blue);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+.actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* Arc-reactor logo (pure CSS) */
+.reactor {
+  position: relative; width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--blue);
+  box-shadow: var(--glow), inset 0 0 12px rgba(46, 200, 255, 0.35);
+}
+.reactor::before {
+  content: ""; position: absolute; inset: 5px; border-radius: 50%;
+  border: 2px dashed rgba(46, 200, 255, 0.75);
+  animation: spin 14s linear infinite;
+}
+.reactor::after {
+  content: ""; position: absolute; inset: 13px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, var(--blue) 55%, var(--blue-deep) 100%);
+  box-shadow: 0 0 14px var(--blue);
+}
+
+/* Buttons */
+.chip {
+  min-height: 40px; padding: 0 14px;
+  background: rgba(46, 200, 255, 0.07);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 600 0.74rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--blue);
+  cursor: pointer;
+}
+.chip:active { background: rgba(46, 200, 255, 0.2); }
+
+/* Messages */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 14px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.msg {
+  max-width: 88%;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  animation: rise 0.18s ease-out;
+}
+.msg.user {
+  align-self: flex-end;
+  color: #021018;
+  background: linear-gradient(135deg, var(--blue-deep), var(--blue));
+  border-bottom-right-radius: 5px;
+  box-shadow: var(--glow);
+}
+.msg.assistant {
+  align-self: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-bottom-left-radius: 5px;
+}
+.msg.assistant::before {
+  content: "JARVIS";
+  display: block; margin-bottom: 4px;
+  font: 700 0.6rem/1 var(--mono); letter-spacing: 0.22em; color: var(--blue);
+}
+.msg.pending { color: var(--muted); }
+.msg.failed { border-color: var(--danger); border-left-color: var(--danger); color: #ffd3d9; }
+.msg.failed::before { content: "SYSTEM ALERT"; color: var(--danger); }
+
+/* Composer */
+.composer {
+  display: flex; align-items: flex-end; gap: 10px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(0deg, rgba(7, 16, 34, 0.95), rgba(7, 16, 34, 0.6));
+}
+.composer textarea {
+  flex: 1; min-height: 46px; max-height: 160px;
+  padding: 11px 16px;
+  resize: none;
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
+  border-radius: 23px;
+  outline: none;
+}
+.composer textarea::placeholder { color: var(--muted); }
+.composer textarea:focus { border-color: var(--line-strong); box-shadow: var(--glow); }
+.send {
+  width: 46px; height: 46px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: 50%;
+  color: #021018;
+  background: linear-gradient(135deg, var(--blue-deep), var(--blue));
+  box-shadow: var(--glow);
+  cursor: pointer;
+}
+.send:disabled { opacity: 0.45; box-shadow: none; cursor: default; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 50% { opacity: 0.35; } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .reactor::before, .dot, .msg { animation: none; }
+}

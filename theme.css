@@ -1,0 +1,18 @@
+/* Design tokens: change the look of the whole app from here. */
+:root {
+  --bg-0: #03060f;
+  --bg-1: #071022;
+  --panel: rgba(10, 20, 44, 0.78);
+  --panel-solid: #0a142c;
+  --line: rgba(46, 200, 255, 0.22);
+  --line-strong: rgba(46, 200, 255, 0.6);
+  --blue: #2ec8ff;
+  --blue-deep: #0a84ff;
+  --text: #e6f4ff;
+  --muted: #7f97b8;
+  --danger: #ff5d73;
+  --glow: 0 0 18px rgba(46, 200, 255, 0.35);
+  --radius: 18px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
