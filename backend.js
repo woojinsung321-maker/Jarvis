@@ -1,42 +1,34 @@
-// The ONLY file that talks to a backend. To switch AI providers or hosting
-// later, change this file (and the backend); the interface code stays the same.
+// The ONLY file that talks to the backend. To change hosting or AI provider later,
+// change this file and the backend; the screens stay the same.
 //
-// Contract with the future backend:
-//   POST {API_BASE_URL}/api/chat   body: { messages: [{ role, content }] }
-//   200 -> { reply: "text" }       error -> { error: "code" } with a non-200 status
+//   GET  /api/session  -> { authenticated }
+//   POST /api/login    { passphrase }  -> { ok }  (sets an HttpOnly cookie the page cannot read)
+//   POST /api/logout   -> { ok }
+//   POST /api/chat     { messages }    -> { reply, provider, model }
+//   Errors: non-2xx with { error: "code", retryAfter?, missing? }
 
 import { CONFIG } from "./config.js";
 
 export function getMode() {
-  return CONFIG.API_BASE_URL ? "online" : "local";
+  return CONFIG.USE_BACKEND ? "online" : "local";
 }
 
-function localReply(messages) {
-  const last = messages[messages.length - 1]?.content ?? "";
-  const shown = last.length > 300 ? `${last.slice(0, 300)}…` : last;
-  return new Promise((resolve) => {
-    setTimeout(
-      () =>
-        resolve(
-          "Local mode: no AI is connected yet, so I can only echo your message.\n\nYou said: " +
-            shown
-        ),
-      450
-    );
-  });
+function apiError(code, status = 0) {
+  const err = new Error(code);
+  err.status = status;
+  return err;
 }
 
-async function remoteReply(messages) {
+async function request(path, options = {}) {
   let res;
   try {
-    res = await fetch(`${CONFIG.API_BASE_URL}/api/chat`, {
-      method: "POST",
-      credentials: "include",
+    res = await fetch(`${CONFIG.API_BASE_URL}${path}`, {
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      ...options,
     });
   } catch {
-    throw new Error("network_error");
+    throw apiError("network_error");
   }
 
   let data = null;
@@ -46,14 +38,42 @@ async function remoteReply(messages) {
     /* non-JSON body */
   }
   if (!res.ok) {
-    const err = new Error(data?.error || `http_${res.status}`);
-    err.status = res.status;
+    const err = apiError(data?.error || `http_${res.status}`, res.status);
+    err.retryAfter = Number(res.headers.get("Retry-After")) || Number(data?.retryAfter) || 0;
+    err.missing = Array.isArray(data?.missing) ? data.missing : [];
     throw err;
   }
-  if (typeof data?.reply !== "string") throw new Error("bad_response");
-  return data.reply;
+  return data;
 }
 
-export function sendMessage(messages) {
-  return getMode() === "online" ? remoteReply(messages) : localReply(messages);
+export async function getSession() {
+  if (getMode() === "local") return { authenticated: true };
+  return request("/api/session");
+}
+
+export async function login(passphrase) {
+  return request("/api/login", { method: "POST", body: JSON.stringify({ passphrase }) });
+}
+
+export async function logout() {
+  if (getMode() === "local") return;
+  await request("/api/logout", { method: "POST", body: "{}" });
+}
+
+function localReply(messages) {
+  const last = messages[messages.length - 1]?.content ?? "";
+  const shown = last.length > 300 ? `${last.slice(0, 300)}…` : last;
+  return new Promise((resolve) => {
+    setTimeout(
+      () => resolve("Local mode: no AI is connected, so I can only echo your message.\n\nYou said: " + shown),
+      450
+    );
+  });
+}
+
+export async function sendMessage(messages) {
+  if (getMode() === "local") return localReply(messages);
+  const data = await request("/api/chat", { method: "POST", body: JSON.stringify({ messages }) });
+  if (typeof data?.reply !== "string") throw apiError("bad_response");
+  return data.reply;
 }

@@ -13,20 +13,34 @@
   <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/login.css">
 </head>
 <body>
-  <div class="app" id="app">
+  <main id="login" class="login" hidden>
+    <form id="login-form" class="login-card" autocomplete="on">
+      <div class="reactor" aria-hidden="true"></div>
+      <h1>J.A.R.V.I.S</h1>
+      <p class="login-sub">Private system &middot; owner access only</p>
+      <label class="sr-only" for="passphrase">Passphrase</label>
+      <input id="passphrase" class="field" type="password" autocomplete="current-password" placeholder="Passphrase" required>
+      <button type="submit" id="login-button" class="login-button">Authenticate</button>
+      <p id="login-error" class="login-error" role="alert" hidden></p>
+    </form>
+  </main>
+
+  <div class="app" id="app" hidden>
     <header class="topbar">
       <div class="brand">
         <div class="reactor" aria-hidden="true"></div>
         <div class="brand-text">
           <h1>J.A.R.V.I.S</h1>
-          <span class="status"><i class="dot" aria-hidden="true"></i><span id="status-text">LOCAL MODE</span></span>
+          <span class="status"><i class="dot" aria-hidden="true"></i><span id="status-text">CONNECTING</span></span>
         </div>
       </div>
       <div class="actions">
         <button type="button" id="install" class="chip" hidden>Install</button>
         <button type="button" id="new-chat" class="chip">New chat</button>
+        <button type="button" id="lock" class="chip">Lock</button>
       </div>
     </header>
 

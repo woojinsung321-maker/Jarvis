@@ -1,73 +1,100 @@
-# JARVIS - Phase 1: Foundation
+# JARVIS - Phase 2: AI Brain
 
-A mobile-first, installable (PWA) chat app with a dark, electric-blue interface.
-Plain HTML, CSS and JavaScript. No build step, no accounts, no paid services. No secrets anywhere in these files.
+Phase 1 (the app) plus a secure backend: owner-only login, Gemini replies, request checks and rate limits.
+Everything is free. **No secret is stored in any file of this project.**
 
-**What Phase 1 does:** chat screen, install-to-home-screen, works offline (the screen, not an AI).
-**What it does not do yet:** there is no AI. Replies are a local echo and the header says LOCAL MODE.
-Login and the Gemini connection come in Phase 2. Chats are not saved yet (Phase 3).
+## How it fits together
 
-## Files (all in one folder on purpose)
+The backend is `_worker.js`: a Cloudflare Worker that runs inside your Cloudflare Pages site ("advanced mode").
+It lives on the same web address as the app, so the login cookie stays private and no cross-site tricks are needed.
+`_routes.json` sends only `/api/*` requests to it; the app files are served directly by Cloudflare.
 
-Phone file pickers cannot select folders, so every file sits at the top level. Upload them all together.
+- `POST /api/login` passphrase -> signed, HttpOnly, Secure, SameSite=Strict cookie (7 days)
+- `POST /api/chat` needs that cookie, checks the request, asks Gemini, returns the reply
+- `POST /api/logout`, `GET /api/session`, `GET /api/models` (shows which Gemini models your key can use)
+
+## Where the secrets live (never in GitHub)
+
+You type them into the Cloudflare dashboard. Cloudflare stores them encrypted and gives them only to the Worker.
+
+| Secret name | What to enter |
+|---|---|
+| `OWNER_PASSPHRASE` | Your login passphrase. At least 16 characters. Four or five random words work well. |
+| `SESSION_SECRET` | Random text, at least 32 characters (mash the keyboard or use a password manager). Changing it logs out every device. |
+| `GEMINI_API_KEY` | Your key from aistudio.google.com |
+
+Optional plain variable (not secret): `GEMINI_MODELS` = comma-separated model names, tried in order.
+Default is `gemini-flash-lite-latest,gemini-flash-latest`.
+
+## Deploy from your Android phone
+
+Do the steps in this order so the first deployment already has its secrets.
+
+1. **Get a Gemini key.** Chrome > aistudio.google.com > sign in > **Get API key** > create a key. Do not add billing.
+2. **Add the secrets.** Cloudflare dashboard > Workers & Pages > your `jarvis` Pages project >
+   **Settings > Variables and Secrets** (use Chrome's **Desktop site** if the page looks cramped).
+   Add the three secrets above for the **Production** environment, choosing the type **Secret** (encrypted) for each.
+3. **Upload to GitHub.** Extract `jarvis-phase-2.zip` in the Files app. In your `jarvis` repo tap
+   **Add file > Upload files** and select **all 18 files** from the extracted folder.
+   Files with the same names replace the old ones. Commit with a message like "Phase 2 backend".
+4. **Wait for the deploy.** Cloudflare redeploys automatically after the commit (the Deployments tab shows progress).
+   If you add or change secrets later, the change only applies to the NEXT deployment: open the latest deployment
+   and use **Retry deployment**, or commit any small change.
+5. **Open the app** and reload it once so the new version replaces the old one. You should see the login screen.
+
+If the app opens straight into chat with the old LOCAL MODE label, the old version is still cached:
+close the app completely and reopen it, or clear the site data for your `pages.dev` address in Chrome.
+
+## Test checklist
+
+1. Login screen appears (no chat visible before signing in).
+2. A wrong passphrase shows "Wrong passphrase."
+3. The right passphrase opens the chat; the header says SECURE LINK.
+4. Send "Say hello in one sentence": a Gemini reply appears.
+5. Close and reopen the app: still signed in. **Lock** returns to the login screen.
+6. Open `your-address/api/models` in Chrome while signed in: it lists model names. Signed out it shows `unauthorized`.
+7. Airplane mode: the installed app still opens (status OFFLINE); sending shows a connection error.
+
+## If something goes wrong
+
+| What you see | Meaning and fix |
+|---|---|
+| "Server setup incomplete: ..." | That secret is missing or too short. Add it (step 2), then retry the deployment. |
+| "The Gemini key is not set" | `GEMINI_API_KEY` is missing in Production. Add it, then retry the deployment. |
+| "No configured Gemini model was found" | Open `/api/models`, pick names from the list, set `GEMINI_MODELS`, retry the deployment. |
+| "The free Gemini limit was reached" | Free-tier quota used up. Wait, or list more models in `GEMINI_MODELS`. |
+| "Gemini rejected the request" | The API key is wrong or disabled. Create a new key and replace the secret. |
+| "Too many attempts" | 5 wrong passphrases from one address. Wait about 15 minutes. |
+| Blank page or no login after upload | Make sure `_worker.js` and `_routes.json` are in the top level of the repo, not in a folder. |
+
+## Security notes
+
+- The passphrase is compared as hashes; the cookie is signed with `SESSION_SECRET` and cannot be read by page scripts.
+- State-changing requests must come from your own site (origin check), carry JSON, and stay under 64 KB.
+- Rate limits: 5 login attempts per 15 minutes per address, 20 chat messages per minute per login.
+  They are kept in the Worker's memory, so they are best-effort (a restart resets them). The 16+ character passphrase is the real protection.
+  Durable limits can come with Phase 3 storage.
+- Logging out clears the cookie on this device. To end every session everywhere, change `SESSION_SECRET` and retry the deployment.
+- Free Gemini tier: Google may use your prompts to improve its products. Do not send passwords or private identity data.
+- The repository is public. `_worker.js` contains no secrets, so that is safe, but never commit keys, passwords or `.dev.vars` files.
+- The Worker returns only short error codes. Details stay in Cloudflare's logs and never include your messages or keys.
+
+## Files
 
 | File | Purpose |
 |---|---|
-| index.html | The page |
-| styles.css, theme.css | Look and layout (colors live in theme.css) |
-| app.js | Starts the app, wires everything together |
-| chat-ui.js | Draws messages on screen |
-| backend.js | The only file that talks to a backend (local echo for now) |
-| config.js | Settings (backend address goes here later; it is not a secret) |
-| pwa.js | Service worker registration and the Install button |
-| sw.js | Service worker (offline support) |
-| manifest.json | Makes the app installable |
-| _headers | Security headers for Cloudflare Pages |
-| icon-192.png, icon-512.png | App icons |
+| `_worker.js` | NEW. The backend (login, sessions, rate limits, Gemini) |
+| `_routes.json` | NEW. Sends only `/api/*` to the Worker |
+| `auth.js`, `login.css` | NEW. Login screen code and styling |
+| `index.html`, `app.js`, `backend.js`, `config.js`, `sw.js` | UPDATED for login and the backend |
+| `styles.css`, `theme.css`, `chat-ui.js`, `pwa.js`, `manifest.json`, `_headers`, icons | Unchanged from Phase 1 |
 
-## 1. Upload to GitHub (Android Chrome)
-
-1. Download `jarvis-phase-1.zip`. In the Files app, tap it and choose **Extract**.
-2. In Chrome open github.com, sign in, open your `jarvis` repository.
-   Tip: Chrome menu (three dots) > **Desktop site** makes the buttons easier to find.
-3. If you earlier added files from a previous version, delete them first (open the file, trash icon, commit).
-4. Tap **Add file > Upload files > choose your files**.
-5. Open the extracted `jarvis` folder and select **all 14 files** (including README.md and `_headers`).
-   If the picker hides a file, tap the menu and turn on "Show all files" or search for it by name.
-6. Wait for all uploads to finish, then tap **Commit changes**.
-7. Check the repository front page: you should see all 14 files at the top level, not inside a folder.
-
-## 2. Publish with Cloudflare Pages (free)
-
-1. Cloudflare dashboard > **Workers & Pages > Create > Pages > Connect to Git** > choose `jarvis`.
-2. Framework preset: **None**. Build command: leave **empty**. Build output directory: leave **empty** (or type `/`).
-3. **Save and Deploy**, then open the `*.pages.dev` address it gives you.
-
-Later updates: edit or upload files on GitHub and commit. Cloudflare redeploys by itself. Reload the page to see changes.
-
-## 3. Install on your phone
-
-Open the `*.pages.dev` address in Chrome. Tap **Install** in the app header (or Chrome menu > **Install app**).
-It then opens full-screen from your home screen.
-
-## 4. Test checklist
-
-1. The page loads with a glowing blue header and LOCAL MODE.
-2. Type a message, tap the arrow: your message appears on the right, an echo on the left.
-3. **New chat** clears the conversation.
-4. Install works and the app opens full-screen.
-5. Airplane mode: open the installed app. It still opens and the echo chat still works.
-6. The on-screen keyboard does not cover the input box.
-
-If something fails, note exactly what you saw and tell Claude.
-
-## Safety notes
-
-- Never put passwords or API keys in any of these files. Real secrets will live only in Cloudflare secrets (Phase 2).
-- The repository will be public (free Cloudflare Pages from GitHub is simplest that way). Keep it free of private data.
-- `_headers` currently only allows the app to talk to itself. When a backend address is added in Phase 2, that file gets updated too.
+Phase 1 local demo mode still exists: set `USE_BACKEND: false` in `config.js` to turn the backend off.
 
 ## Tested
 
-Automatically, in headless Chrome with Pixel 7 emulation (layout, chat, offline start, service worker, install checks).
-Not yet tested on a real phone or on a real Cloudflare deployment: that is what the checklist above is for.
+Automatically, with a copy of the real Worker code and a fake Gemini: 22 groups of Worker tests (login, cookies, forged and
+expired cookies, validation, rate limits, model fallback, error handling, no secret in any response) and a full set of
+phone-sized Chrome checks (login flow, chat, lock, offline start, caching, install checks).
+**Not yet tested:** your real Cloudflare deployment, the real Gemini API with your key, and the real phone.
+The checklist above is how you confirm those.

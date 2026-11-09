@@ -1,15 +1,17 @@
 // JARVIS service worker.
 // - Makes the app installable and lets the app shell open offline.
 // - Network-first for the app's own files, so updates always arrive when online.
-// - Never touches /api/ requests: chat data is never cached.
+// - Never touches /api/ requests: login, chat data and cookies are never cached.
 // If you add or rename files in SHELL, change the CACHE version number.
 
-const CACHE = "jarvis-shell-v1";
+const CACHE = "jarvis-shell-v2";
 const SHELL = [
   "/",
   "/theme.css",
   "/styles.css",
+  "/login.css",
   "/app.js",
+  "/auth.js",
   "/config.js",
   "/backend.js",
   "/chat-ui.js",
@@ -38,7 +40,7 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname === "/api" || url.pathname.startsWith("/api/")) return;
 
   event.respondWith(
     fetch(req)
