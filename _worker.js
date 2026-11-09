@@ -18,6 +18,7 @@
  *   POST /api/logout    clears the cookie
  *   POST /api/chat      (login required) messages -> Gemini reply
  *   GET  /api/models    (login required) lists Gemini models your key can use
+ *   GET  /api/diagnostics  (login required) makes a tiny REAL Gemini call and reports the evidence
  */
 
 // ---------------------------------------------------------------- settings
@@ -36,6 +37,7 @@ const DEFAULT_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"];
 const LIMITS = {
   loginAttempts: { max: 5, windowMs: 15 * 60 * 1000 }, // per IP address
   chat: { max: 20, windowMs: 60 * 1000 }, // per login session
+  diagnostics: { max: 3, windowMs: 5 * 60 * 1000 }, // per login session (each run uses free Gemini quota)
 };
 
 const encoder = new TextEncoder();
@@ -208,16 +210,33 @@ class ProviderError extends Error {
   }
 }
 
+// The key is pasted by hand: ignore stray spaces, line breaks and wrapping quotes.
+function geminiKey(env) {
+  if (typeof env.GEMINI_API_KEY !== "string") return "";
+  return env.GEMINI_API_KEY.trim().replace(/^["']+|["']+$/g, "").trim();
+}
+
+// Removes every secret value (and anything shaped like a Google key) before text is logged or returned.
+function redact(text, env) {
+  let out = String(text ?? "");
+  const values = [geminiKey(env)];
+  for (const name of ["GEMINI_API_KEY", "OWNER_PASSPHRASE", "SESSION_SECRET"]) {
+    if (typeof env[name] === "string") values.push(env[name].trim());
+  }
+  for (const value of values) if (value.length >= 8) out = out.split(value).join("[redacted]");
+  return out.replace(/AIza[0-9A-Za-z_-]{20,}/g, "[redacted]");
+}
+
 function geminiModels(env) {
   const raw = String(env.GEMINI_MODELS || env.GEMINI_MODEL || "");
   const list = raw.split(",").map((m) => m.trim()).filter((m) => /^[A-Za-z0-9._-]+$/.test(m));
   return list.length ? list.slice(0, 4) : DEFAULT_MODELS;
 }
 
-async function geminiErrorMessage(res) {
+async function geminiErrorMessage(res, env) {
   try {
     const data = await res.json();
-    return String(data?.error?.message || "").slice(0, 200);
+    return redact(String(data?.error?.message || "").slice(0, 200), env);
   } catch {
     return "";
   }
@@ -249,7 +268,7 @@ const gemini = {
   id: "gemini",
 
   async chat({ messages, system, env }) {
-    const apiKey = typeof env.GEMINI_API_KEY === "string" ? env.GEMINI_API_KEY : "";
+    const apiKey = geminiKey(env);
     if (!apiKey) throw new ProviderError("provider_not_configured", 500);
 
     const body = JSON.stringify({
@@ -283,7 +302,7 @@ const gemini = {
       if (res.status === 429) { sawRateLimit = true; continue; }
       if (res.status === 404) { notFound++; continue; }
       if (res.status === 400 || res.status === 401 || res.status === 403) {
-        console.error(`Gemini HTTP ${res.status} (${model}): ${await geminiErrorMessage(res)}`);
+        console.error(`Gemini HTTP ${res.status} (${model}): ${await geminiErrorMessage(res, env)}`);
         throw new ProviderError("provider_rejected_request", 502); // key/request problem: other models will not help
       }
       if (!res.ok) {
@@ -307,7 +326,7 @@ const gemini = {
 
   async listModels(env) {
     const res = await geminiFetch(`${GEMINI_BASE}/models?pageSize=200`, {
-      headers: { "x-goog-api-key": String(env.GEMINI_API_KEY || "") },
+      headers: { "x-goog-api-key": geminiKey(env) },
     });
     if (!res.ok) throw new ProviderError(res.status === 429 ? "rate_limited" : "provider_rejected_request", 502);
     const data = await res.json();
@@ -405,12 +424,115 @@ async function handleChat(request, env, url) {
 
 async function handleModels(request, env) {
   if (!(await readSession(request, env))) return fail("unauthorized", 401);
-  if (configProblems(env, ["GEMINI_API_KEY"]).length) return fail("provider_not_configured", 500);
+  if (!geminiKey(env)) return fail("provider_not_configured", 500);
   try {
     return json({ configured: geminiModels(env), available: await gemini.listModels(env) });
   } catch (err) {
     return fail(err instanceof ProviderError ? err.code : "provider_error", 502);
   }
+}
+
+// ------------------------------------------------------------- diagnostics
+// A tiny REAL Gemini call whose result proves (or disproves) that the key, the model name and
+// the connection work. The report contains only statuses, timings and Gemini's own short reply.
+// It never contains the key, the passphrase or the session secret (all values are redacted).
+const DIAGNOSTIC_PROMPT = "Reply with exactly the single word: OK";
+
+const VERDICT_HINTS = {
+  gemini_working: "Gemini answered. Chat uses the first working model in the list.",
+  key_missing: "GEMINI_API_KEY is not visible to the Worker. Add it as a Production secret, then retry the deployment.",
+  key_or_request_rejected: "Google rejected the key. Create a new key at aistudio.google.com, replace the GEMINI_API_KEY secret, then retry the deployment.",
+  rate_limited_or_quota_exhausted: "The key may be fine but this model's free quota is used up (or is 0). Wait, or put other models in GEMINI_MODELS (see /api/models).",
+  model_not_found: "None of the configured model names exist. Open /api/models and put names from that list into GEMINI_MODELS.",
+  gemini_unreachable_or_error: "Google did not answer properly. Try again in a minute.",
+};
+
+function describeSecret(env, name) {
+  const value = typeof env[name] === "string" ? env[name] : "";
+  const configProblem = configProblems(env, [name])[0];
+  if (!value) return "missing";
+  return configProblem ? "too_short" : "set";
+}
+
+async function probeGemini(model, env) {
+  const started = Date.now();
+  const result = { model, ok: false, httpStatus: null, latencyMs: 0 };
+  try {
+    const res = await geminiFetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey(env) },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: DIAGNOSTIC_PROMPT }] }],
+        generationConfig: { maxOutputTokens: 256, temperature: 0 },
+      }),
+    });
+    result.httpStatus = res.status;
+    let data = null;
+    try { data = await res.json(); } catch { /* not JSON */ }
+    if (!res.ok) {
+      result.googleStatus = String(data?.error?.status || "").slice(0, 40) || undefined;
+      const reason = (data?.error?.details ?? []).find((d) => typeof d?.reason === "string")?.reason;
+      if (reason) result.reason = String(reason).slice(0, 60);
+      result.message = redact(data?.error?.message, env).slice(0, 200);
+    } else {
+      const { text, blocked } = extractGeminiText(data);
+      result.ok = Boolean(text);
+      result.replyPreview = redact(text, env).slice(0, 40);
+      if (!text) result.note = blocked ? "blocked_by_provider" : "empty_reply";
+      if (typeof data?.modelVersion === "string") result.modelVersion = redact(data.modelVersion, env).slice(0, 60);
+      const usage = data?.usageMetadata;
+      if (Number.isFinite(usage?.promptTokenCount)) {
+        result.tokens = { prompt: usage.promptTokenCount, output: Number.isFinite(usage.candidatesTokenCount) ? usage.candidatesTokenCount : 0 };
+      }
+    }
+  } catch (err) {
+    result.error = err?.name === "AbortError" ? "timeout" : "network_error";
+  }
+  result.latencyMs = Date.now() - started;
+  return result;
+}
+
+function diagnosticVerdict(tests) {
+  if (tests.some((t) => t.ok)) return "gemini_working";
+  if (tests.some((t) => [400, 401, 403].includes(t.httpStatus))) return "key_or_request_rejected";
+  if (tests.some((t) => t.httpStatus === 429)) return "rate_limited_or_quota_exhausted";
+  if (tests.length && tests.every((t) => t.httpStatus === 404)) return "model_not_found";
+  return "gemini_unreachable_or_error";
+}
+
+async function handleDiagnostics(request, env, url) {
+  const session = await readSession(request, env);
+  if (!session) return fail("unauthorized", 401);
+
+  const limitKey = `diag:${session.sid}`;
+  if (isLimited(limitKey, LIMITS.diagnostics)) return tooMany("too_many_requests", limitKey, LIMITS.diagnostics);
+  recordHit(limitKey, LIMITS.diagnostics);
+
+  const apiKey = geminiKey(env);
+  const models = geminiModels(env);
+  const config = {
+    provider: "gemini",
+    OWNER_PASSPHRASE: describeSecret(env, "OWNER_PASSPHRASE"),
+    SESSION_SECRET: describeSecret(env, "SESSION_SECRET"),
+    GEMINI_API_KEY: apiKey ? "set" : "missing",
+    geminiKeyFormat: apiKey ? (/^AIza[0-9A-Za-z_-]{30,}$/.test(apiKey) ? "looks_like_a_google_key" : "unexpected_format") : undefined,
+    geminiKeyHadStrayWhitespaceOrQuotes: apiKey && apiKey !== env.GEMINI_API_KEY ? true : undefined,
+    models,
+    modelsSource: env.GEMINI_MODELS || env.GEMINI_MODEL ? "GEMINI_MODELS setting" : "built-in default",
+  };
+
+  const tests = [];
+  let verdict = "key_missing";
+  if (apiKey) {
+    const testAll = url.searchParams.get("all") === "1";
+    for (const model of models) {
+      const result = await probeGemini(model, env);
+      tests.push(result);
+      if (result.ok && !testAll) break;
+    }
+    verdict = diagnosticVerdict(tests);
+  }
+  return json({ ok: verdict === "gemini_working", verdict, hint: VERDICT_HINTS[verdict], checkedAt: new Date().toISOString(), config, tests });
 }
 
 const ROUTES = {
@@ -419,6 +541,7 @@ const ROUTES = {
   "/api/logout": { POST: handleLogout },
   "/api/chat": { POST: handleChat },
   "/api/models": { GET: handleModels },
+  "/api/diagnostics": { GET: handleDiagnostics },
 };
 
 async function handleApi(request, env, url) {
